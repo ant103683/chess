@@ -6,7 +6,6 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <h1>中国象棋在线对战</h1>
     <div class="game-container">
         <div class="chessboard">
             <!-- 红方棋子 -->
@@ -54,6 +53,23 @@
                 <span>河</span>
                 <span>汉</span>
                 <span>界</span>
+            </div>
+        </div>
+        
+        <!-- 添加状态面板区域 -->
+        <div class="game-status-panel">
+            <div>
+                <div id="status" class="status-message">准备就绪，请走棋</div>
+                <div id="ai-thinking" class="ai-thinking hidden">
+                    <span class="thinking-text">AI正在思考</span>
+                    <div class="thinking-progress">
+                        <div class="progress-bar"></div>
+                    </div>
+                </div>
+            </div>
+            <!-- 如果需要添加中间内容，可在此处添加 -->
+            <div>
+                <p>基于象棋引擎：elephantfish</p>
             </div>
         </div>
     </div>

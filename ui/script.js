@@ -13,6 +13,9 @@ function initializeBoard() {
 
     // 初始化棋盘状态
     boardState = {};
+    
+    // 清除所有高亮效果
+    clearLastMoveHighlight();
 
     // 初始化棋子位置
     pieces.forEach(piece => {
@@ -40,6 +43,15 @@ function initializeBoard() {
     if (boardGrid) {
         boardGrid.style.zIndex = "1";
     }
+
+    // 初始化状态面板
+    const status = document.getElementById('status');
+    if (status) {
+        status.textContent = "轮到您走棋";
+    }
+    
+    // 确保AI思考状态初始隐藏
+    hideAIThinking();
 
     // 移除所有现有的点击事件
     document.removeEventListener('click', handleGlobalClick, true);
@@ -492,8 +504,84 @@ function convertCoordinate(pos) {
     return newCol + newRow;
 }
 
+// 显示AI思考状态
+function showAIThinking() {
+    const aiThinking = document.getElementById('ai-thinking');
+    if (aiThinking) {
+        // 重置进度条动画
+        const progressBar = aiThinking.querySelector('.progress-bar');
+        if (progressBar) {
+            // 重置动画
+            progressBar.style.animation = 'none';
+            // 触发重排
+            void progressBar.offsetWidth;
+            // 重新启动动画
+            progressBar.style.animation = 'progress-animation 5s linear forwards';
+        }
+        
+        aiThinking.classList.remove('hidden');
+    }
+    const status = document.getElementById('status');
+    if (status) {
+        status.textContent = "等待AI走棋...";
+    }
+}
+
+// 清除所有上一步高亮
+function clearLastMoveHighlight() {
+    document.querySelectorAll('.last-move, .last-move-highlight').forEach(element => {
+        element.classList.remove('last-move');
+        element.classList.remove('last-move-highlight');
+    });
+}
+
+// 高亮AI的最后一步移动
+function highlightLastMove(fromPos, toPos) {
+    // 先清除之前的高亮
+    clearLastMoveHighlight();
+    
+    // 高亮起点和终点
+    const path = document.createElement('div');
+    path.className = 'last-move-path';
+    
+    // 高亮目标位置的棋子
+    const targetPiece = document.querySelector(`[data-position="${toPos}"]`);
+    if (targetPiece) {
+        targetPiece.classList.add('last-move');
+        targetPiece.classList.add('last-move-highlight');
+        
+        // 5秒后自动移除高亮闪烁效果，但保留基本高亮
+        setTimeout(() => {
+            if (targetPiece) {
+                targetPiece.classList.remove('last-move-highlight');
+            }
+        }, 5000);
+    }
+}
+
+// 隐藏AI思考状态
+function hideAIThinking() {
+    const aiThinking = document.getElementById('ai-thinking');
+    if (aiThinking) {
+        aiThinking.classList.add('hidden');
+        
+        // 暂停进度条动画
+        const progressBar = aiThinking.querySelector('.progress-bar');
+        if (progressBar) {
+            progressBar.style.animationPlayState = 'paused';
+        }
+    }
+    const status = document.getElementById('status');
+    if (status) {
+        status.textContent = "轮到您走棋";
+    }
+}
+
 async function makeMove(fromPos, toPos) {
     console.log(`Moving piece from ${fromPos} to ${toPos}`);
+    
+    // 清除上一步AI移动的高亮效果
+    clearLastMoveHighlight();
     
     // 移动玩家的棋子
     const movingPiece = document.querySelector(`[data-position="${fromPos}"]`);
@@ -523,6 +611,9 @@ async function makeMove(fromPos, toPos) {
         clearLegalMoveMarkers();
     }
 
+    // 显示AI思考状态
+    showAIThinking();
+
     // 发送移动到 elephantfish 引擎并等待 AI 的响应
     try {
         const move = `${fromPos}${toPos}`;  // 例如 "h2e2"
@@ -540,6 +631,9 @@ async function makeMove(fromPos, toPos) {
 
         const data = await response.json();  // 解析 JSON 响应
         const aiMove = data.move;  // 从 JSON 响应中获取移动
+        
+        // 隐藏AI思考状态
+        hideAIThinking();
         
         if (aiMove) {
             // 解析AI的移动 (例如 "h0g2")
@@ -588,19 +682,26 @@ async function makeMove(fromPos, toPos) {
                     // 更新棋盘状态
                     boardState[aiToPos] = boardState[aiFromPos];
                     delete boardState[aiFromPos];
+                    
+                    // 添加高亮效果
+                    highlightLastMove(aiFromPos, aiToPos);
+                    
+                    // 更新状态信息
+                    updateStatus(`AI已移动`);
                 }
             }, 500);  // 500ms 延迟
         }
     } catch (error) {
+        // 隐藏AI思考状态，显示错误
+        hideAIThinking();
         console.error('Error:', error);
-        alert('与象棋引擎通信时出错，请确保 elephantfish 服务正在运行');
+        updateStatus('与象棋引擎通信时出错，请确保服务正在运行');
     }
 }
 
-function updateStatus(message, color) {
+function updateStatus(message) {
     const status = document.getElementById('status');
     status.textContent = message;
-    status.style.color = color;
 }
 
 // 页面加载完成后初始化

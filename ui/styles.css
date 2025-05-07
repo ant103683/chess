@@ -134,3 +134,93 @@ body {
     }
 } 
 
+/* 状态面板样式 */
+.game-container {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 20px;
+}
+
+.game-status-panel {
+    min-width: 200px;
+    height: 721px; /* 与棋盘高度一致 */
+    padding: 15px;
+    background-color: #f8f8f8;
+    border: 2px solid #8b4513;
+    border-radius: 8px;
+    margin-top: 0; /* 移除上边距使顶部对齐 */
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.status-message {
+    font-size: 18px;
+    margin-bottom: 15px;
+    color: #333;
+}
+
+.ai-thinking {
+    display: flex;
+    flex-direction: column;
+    font-size: 16px;
+    color: #d35400;
+    font-weight: bold;
+    padding: 10px;
+    border-radius: 5px;
+    background-color: #fff3e0;
+    border-left: 4px solid #d35400;
+}
+
+.thinking-text {
+    margin-bottom: 8px;
+}
+
+.thinking-progress {
+    width: 100%;
+    height: 8px;
+    background-color: #ffdbb8;
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+}
+
+.progress-bar {
+    position: absolute;
+    height: 100%;
+    width: 0%;
+    background-color: #d35400;
+    border-radius: 4px;
+    transition: width 0.1s linear;
+    animation: progress-animation 5s linear forwards;
+}
+
+@keyframes progress-animation {
+    0% { width: 0%; }
+    100% { width: 100%; }
+}
+
+.hidden {
+    display: none;
+} 
+
+/* AI最近移动的高亮效果 */
+.last-move {
+    box-shadow: 0 0 15px 8px rgba(255, 165, 0, 0.8);
+    border: 2px solid #ff9900;
+    z-index: 101;
+}
+
+@keyframes last-move-flash {
+    0% { box-shadow: 0 0 15px 3px rgba(255, 165, 0, 0.4); }
+    50% { box-shadow: 0 0 20px 8px rgba(255, 165, 0, 0.8); }
+    100% { box-shadow: 0 0 15px 3px rgba(255, 165, 0, 0.4); }
+}
+
+.last-move-highlight {
+    animation: last-move-flash 1.5s ease-in-out 3;
+} 
+
