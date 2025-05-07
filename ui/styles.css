@@ -35,13 +35,13 @@ body {
 
 .piece {
     position: absolute;
-    width: 9%; /* 从11%减小到9%，减小棋子相对大小 */
+    width: 9.7%; /* 从9%增加到9.7%，让棋子稍大一点 */
     aspect-ratio: 1/1; /* 保持1:1的比例 */
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 2.2vw; /* 调整字体大小 */
+    font-size: 2.3vw; /* 稍微调大字体 */
     cursor: pointer;
     transition: transform 0.2s;
     transform: translate(-50%, -50%);
@@ -51,7 +51,7 @@ body {
 /* 添加媒体查询以确保在较大屏幕上字体不会过大 */
 @media (min-width: 1200px) {
     .piece {
-        font-size: 28px; /* 调整大屏幕上的最大字体大小 */
+        font-size: 30px; /* 调整大屏幕上的最大字体大小 */
     }
 }
 
