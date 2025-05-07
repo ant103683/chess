@@ -1,11 +1,46 @@
 let ws;
 let selectedPiece = null; // 当前选中的棋子
-const GRID_SIZE = 80;  // 格子大小
-const BOARD_PADDING = 40;  // 棋盘边距
+let GRID_SIZE = 80;  // 格子大小（将根据棋盘实际大小动态计算）
+let BOARD_PADDING = 40;  // 棋盘边距（将根据棋盘实际大小动态计算）
 let legalMoveMarkers = []; // 存储合法移动标记的数组
 
 // 棋盘状态
 let boardState = {};
+
+// 计算棋盘和格子的实际尺寸
+function calculateBoardDimensions() {
+    const chessboard = document.querySelector('.chessboard');
+    if (!chessboard) return;
+    
+    const boardRect = chessboard.getBoundingClientRect();
+    const boardWidth = boardRect.width;
+    const boardHeight = boardRect.height;
+    
+    // 计算棋盘内边距（padding）
+    BOARD_PADDING = boardWidth * 0.059; // 5.9%的相对内边距
+    
+    // 计算实际格子大小
+    GRID_SIZE = (boardWidth - 2 * BOARD_PADDING) / 8; // 8格
+    
+    console.log(`棋盘尺寸已更新: 宽=${boardWidth}px, 高=${boardHeight}px, 格子大小=${GRID_SIZE}px, 内边距=${BOARD_PADDING}px`);
+}
+
+// 更新所有棋子的位置
+function updateAllPiecesPositions() {
+    const pieces = document.querySelectorAll('.piece');
+    
+    pieces.forEach(piece => {
+        const position = piece.getAttribute('data-position');
+        if (position) {
+            const [col, row] = position.split('');
+            const x = col.charCodeAt(0) - 'a'.charCodeAt(0);
+            const y = parseInt(row);
+            
+            piece.style.left = `${BOARD_PADDING + x * GRID_SIZE}px`;
+            piece.style.top = `${BOARD_PADDING + (9 - y) * GRID_SIZE}px`;
+        }
+    });
+}
 
 function initializeBoard() {
     const chessboard = document.querySelector('.chessboard');
@@ -16,6 +51,9 @@ function initializeBoard() {
     
     // 清除所有高亮效果
     clearLastMoveHighlight();
+    
+    // 计算棋盘尺寸
+    calculateBoardDimensions();
 
     // 初始化棋子位置
     pieces.forEach(piece => {
@@ -27,8 +65,6 @@ function initializeBoard() {
             
             piece.style.left = `${BOARD_PADDING + x * GRID_SIZE}px`;
             piece.style.top = `${BOARD_PADDING + (9 - y) * GRID_SIZE}px`;
-            // 确保棋子在最上层
-            piece.style.zIndex = "100";
             
             // 更新棋盘状态
             boardState[position] = {
@@ -124,7 +160,6 @@ function handleBoardClick(event) {
     // 如果点击的是合法移动标记
     if (event.target.classList.contains('legal-move-marker')) {
         const pos = event.target.getAttribute('data-position');
-        const [col, row] = pos.split('');
         const toPos = pos;
         const fromPos = selectedPiece.getAttribute('data-position');
         
@@ -134,9 +169,11 @@ function handleBoardClick(event) {
         return;
     }
     
+    // 计算相对于棋盘的点击位置
     x = event.clientX - rect.left - BOARD_PADDING;
     y = event.clientY - rect.top - BOARD_PADDING;
 
+    // 根据当前格子大小计算列和行
     const col = Math.round(x / GRID_SIZE);
     const row = 9 - Math.round(y / GRID_SIZE);
 
@@ -206,6 +243,10 @@ function showLegalMoves(piece) {
                 // 设置标记的位置
                 marker.style.left = `${BOARD_PADDING + col * GRID_SIZE}px`;
                 marker.style.top = `${BOARD_PADDING + (9 - row) * GRID_SIZE}px`;
+                
+                // 使标记大小响应式
+                marker.style.width = `${GRID_SIZE * 0.4}px`;
+                marker.style.height = `${GRID_SIZE * 0.4}px`;
                 
                 chessboard.appendChild(marker);
                 legalMoveMarkers.push(marker);
@@ -577,6 +618,21 @@ function hideAIThinking() {
     }
 }
 
+// 监听窗口大小变化，重新计算棋盘尺寸和棋子位置
+window.addEventListener('resize', function() {
+    // 添加防抖，避免频繁计算
+    clearTimeout(window.resizeTimeout);
+    window.resizeTimeout = setTimeout(function() {
+        calculateBoardDimensions();
+        updateAllPiecesPositions();
+        // 同样更新所有的合法移动标记
+        if (selectedPiece) {
+            clearLegalMoveMarkers();
+            showLegalMoves(selectedPiece);
+        }
+    }, 100);
+});
+
 async function makeMove(fromPos, toPos) {
     console.log(`Moving piece from ${fromPos} to ${toPos}`);
     
@@ -598,8 +654,8 @@ async function makeMove(fromPos, toPos) {
     const col = toPos.charCodeAt(0) - 97;
     const row = 9 - parseInt(toPos.slice(1));
     
-    movingPiece.style.left = `${col * GRID_SIZE + BOARD_PADDING}px`;
-    movingPiece.style.top = `${row * GRID_SIZE + BOARD_PADDING}px`;
+    movingPiece.style.left = `${BOARD_PADDING + col * GRID_SIZE}px`;
+    movingPiece.style.top = `${BOARD_PADDING + row * GRID_SIZE}px`;
     
     // 更新棋盘状态
     boardState[toPos] = boardState[fromPos];
@@ -676,8 +732,8 @@ async function makeMove(fromPos, toPos) {
                     const aiCol = aiToPos.charCodeAt(0) - 97;
                     const aiRow = 9 - parseInt(aiToPos.slice(1));
                     
-                    aiPiece.style.left = `${aiCol * GRID_SIZE + BOARD_PADDING}px`;
-                    aiPiece.style.top = `${aiRow * GRID_SIZE + BOARD_PADDING}px`;
+                    aiPiece.style.left = `${BOARD_PADDING + aiCol * GRID_SIZE}px`;
+                    aiPiece.style.top = `${BOARD_PADDING + aiRow * GRID_SIZE}px`;
                     
                     // 更新棋盘状态
                     boardState[aiToPos] = boardState[aiFromPos];
