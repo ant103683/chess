@@ -24,24 +24,24 @@ body {
 .chessboard {
     position: relative;
     width: 100%;
-    max-width: 641px; /* 最大宽度保持原来的尺寸 */
+    max-width: 760px; /* 从641px增加至760px，使棋盘更大 */
     aspect-ratio: 641/721; /* 保持原始棋盘比例 */
     margin: 0 auto;
     background-color: #f0c78a;
     border: 2px solid #8b4513;
-    padding: 5.9%; /* 40px / 641px ≈ 6.2% 的相对内边距 */
+    padding: 5.9%; /* 5.9%的相对内边距 */
     box-sizing: border-box;
 }
 
 .piece {
     position: absolute;
-    width: 11%; /* 相对于棋盘宽度的百分比 */
+    width: 9%; /* 从11%减小到9%，减小棋子相对大小 */
     aspect-ratio: 1/1; /* 保持1:1的比例 */
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 2.5vw; /* 使用视窗宽度的相对字体大小 */
+    font-size: 2.2vw; /* 调整字体大小 */
     cursor: pointer;
     transition: transform 0.2s;
     transform: translate(-50%, -50%);
@@ -51,7 +51,7 @@ body {
 /* 添加媒体查询以确保在较大屏幕上字体不会过大 */
 @media (min-width: 1200px) {
     .piece {
-        font-size: 30px;
+        font-size: 28px; /* 调整大屏幕上的最大字体大小 */
     }
 }
 
@@ -86,8 +86,9 @@ body {
 
 /* 棋子悬停效果 */
 .piece:hover {
-    transform: translate(-50%, -50%) scale(1.1);
-    box-shadow: 0 0 15px rgba(0,0,0,0.2);
+    transform: translate(-50%, -50%) scale(1.08);
+    box-shadow: 0 0 12px rgba(0,0,0,0.25);
+    z-index: 101;
 }
 
 /* 棋盘网格线 */

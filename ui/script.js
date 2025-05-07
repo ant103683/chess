@@ -19,8 +19,8 @@ function calculateBoardDimensions() {
     // 计算棋盘内边距（padding）
     BOARD_PADDING = boardWidth * 0.059; // 5.9%的相对内边距
     
-    // 计算实际格子大小
-    GRID_SIZE = (boardWidth - 2 * BOARD_PADDING) / 8; // 8格
+    // 计算实际格子大小 - 现在为8格(横向)和9格(纵向)
+    GRID_SIZE = (boardWidth - 2 * BOARD_PADDING) / 8;
     
     console.log(`棋盘尺寸已更新: 宽=${boardWidth}px, 高=${boardHeight}px, 格子大小=${GRID_SIZE}px, 内边距=${BOARD_PADDING}px`);
 }
