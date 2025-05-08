@@ -7,6 +7,26 @@ let legalMoveMarkers = []; // 存储合法移动标记的数组
 // 棋盘状态
 let boardState = {};
 
+// Piece mapping from server characters to frontend classes and text
+const pieceMap = {
+    // Red pieces (player)
+    'R': { class: 'red-che', text: '车' },
+    'N': { class: 'red-ma', text: '马' },
+    'B': { class: 'red-xiang', text: '相' },
+    'A': { class: 'red-shi', text: '士' },
+    'K': { class: 'red-jiang', text: '帅' },
+    'C': { class: 'red-pao', text: '炮' },
+    'P': { class: 'red-bing', text: '兵' },
+    // Black pieces (AI)
+    'r': { class: 'black-che', text: '車' },
+    'n': { class: 'black-ma', text: '馬' },
+    'b': { class: 'black-xiang', text: '象' },
+    'a': { class: 'black-shi', text: '士' },
+    'k': { class: 'black-jiang', text: '将' },
+    'c': { class: 'black-pao', text: '炮' },
+    'p': { class: 'black-bing', text: '卒' }
+};
+
 // 计算棋盘和格子的实际尺寸
 function calculateBoardDimensions() {
     const chessboard = document.querySelector('.chessboard');
@@ -44,35 +64,35 @@ function updateAllPiecesPositions() {
 
 function initializeBoard() {
     const chessboard = document.querySelector('.chessboard');
-    const pieces = document.querySelectorAll('.piece');
+    // Clear existing pieces before initializing or re-rendering
+    // const existingPieces = chessboard.querySelectorAll('.piece');
+    // existingPieces.forEach(p => p.remove()); // REMOVED THIS LINE - IT WAS CAUSING INITIAL PIECES TO DISAPPEAR
+    boardState = {}; // Reset boardState
 
-    // 初始化棋盘状态
-    boardState = {};
-    
-    // 清除所有高亮效果
-    clearLastMoveHighlight();
-    
+    // If called without arguments, it means initial setup from HTML defined pieces
+    // This part might need adjustment if we always render from a server state initially.
+    // For now, assume HTML provides the initial setup.
+    const initialPieces = document.querySelectorAll('.chessboard > .piece-template'); // Assuming we might change HTML to use templates
+    // Or, more robustly, defer to updateBoardFromServer for initial setup too.
+
     // 计算棋盘尺寸
     calculateBoardDimensions();
 
-    // 初始化棋子位置
-    pieces.forEach(piece => {
+    // The original initializeBoard populated boardState from existing HTML pieces.
+    // Now, this function is more about setting up dimensions and event listeners.
+    // Piece rendering will be handled by updateBoardFromServer or if initial HTML pieces are kept.
+    // For now, let's assume the HTML defines the very first board state correctly.
+    // We will re-populate boardState from actual DOM pieces found.
+    document.querySelectorAll('.chessboard .piece').forEach(piece => {
         const position = piece.getAttribute('data-position');
         if (position) {
-            const [col, row] = position.split('');
-            const x = col.charCodeAt(0) - 'a'.charCodeAt(0);
-            const y = parseInt(row);
-            
-            piece.style.left = `${BOARD_PADDING + x * GRID_SIZE}px`;
-            piece.style.top = `${BOARD_PADDING + (9 - y) * GRID_SIZE}px`;
-            
-            // 更新棋盘状态
             boardState[position] = {
                 element: piece,
                 type: piece.className.split(' ')[1]
             };
         }
     });
+    updateAllPiecesPositions(); // Ensure pieces from HTML are positioned correctly
 
     // 确保棋盘网格在底层
     const boardGrid = document.querySelector('.board-grid');
@@ -94,6 +114,13 @@ function initializeBoard() {
     
     // 在document级别添加一个捕获阶段的点击事件处理器
     document.addEventListener('click', handleGlobalClick, true);
+
+    // Add Undo button listener
+    const undoButton = document.getElementById('undo-button');
+    if (undoButton) {
+        undoButton.addEventListener('click', handleUndoClick);
+        undoButton.disabled = true; // Disable undo button on initial load
+    }
 }
 
 function handleGlobalClick(event) {
@@ -546,8 +573,10 @@ function convertCoordinate(pos) {
 }
 
 // 显示AI思考状态
-function showAIThinking() {
+function showAIThinking(message = "AI正在思考...") {
     const aiThinking = document.getElementById('ai-thinking');
+    const undoButton = document.getElementById('undo-button');
+
     if (aiThinking) {
         // 重置进度条动画
         const progressBar = aiThinking.querySelector('.progress-bar');
@@ -564,7 +593,10 @@ function showAIThinking() {
     }
     const status = document.getElementById('status');
     if (status) {
-        status.textContent = "等待AI走棋...";
+        status.textContent = message;
+    }
+    if (undoButton) {
+        undoButton.disabled = true;
     }
 }
 
@@ -603,6 +635,8 @@ function highlightLastMove(fromPos, toPos) {
 // 隐藏AI思考状态
 function hideAIThinking() {
     const aiThinking = document.getElementById('ai-thinking');
+    // const undoButton = document.getElementById('undo-button'); // No longer handled here
+
     if (aiThinking) {
         aiThinking.classList.add('hidden');
         
@@ -616,6 +650,9 @@ function hideAIThinking() {
     if (status) {
         status.textContent = "轮到您走棋";
     }
+    // if (undoButton) {
+    //     undoButton.disabled = false; // Enable undo button -- NO LONGER HANDLED HERE
+    // }
 }
 
 // 监听窗口大小变化，重新计算棋盘尺寸和棋子位置
@@ -634,8 +671,9 @@ window.addEventListener('resize', function() {
 });
 
 async function makeMove(fromPos, toPos) {
-    console.log(`Moving piece from ${fromPos} to ${toPos}`);
-    
+    console.log(`Attempting to move from ${fromPos} to ${toPos}`);
+    showAIThinking("AI正在计算..."); // AI is thinking, disable undo
+
     // 清除上一步AI移动的高亮效果
     clearLastMoveHighlight();
     
@@ -667,9 +705,6 @@ async function makeMove(fromPos, toPos) {
         clearLegalMoveMarkers();
     }
 
-    // 显示AI思考状态
-    showAIThinking();
-
     // 发送移动到 elephantfish 引擎并等待 AI 的响应
     try {
         const move = `${fromPos}${toPos}`;  // 例如 "h2e2"
@@ -686,72 +721,39 @@ async function makeMove(fromPos, toPos) {
         }
 
         const data = await response.json();  // 解析 JSON 响应
-        const aiMove = data.move;  // 从 JSON 响应中获取移动
         
-        // 隐藏AI思考状态
-        hideAIThinking();
-        
-        if (aiMove) {
-            // 解析AI的移动 (例如 "h0g2")
-            const aiFromPosBackend = aiMove.substring(0, 2);
-            const aiToPosBackend = aiMove.substring(2, 4);
-            
-            // 将后端黑方视角的坐标转换为前端红方视角的坐标
-            const aiFromPos = convertCoordinate(aiFromPosBackend);
-            const aiToPos = convertCoordinate(aiToPosBackend);
-            
-            console.log(`AI moves from ${aiFromPosBackend} to ${aiToPosBackend} (后端坐标)`);
-            console.log(`AI moves from ${aiFromPos} to ${aiToPos} (前端坐标)`);
-            
-            // 延迟一小段时间后执行AI的移动，让玩家能看清楚
-            setTimeout(() => {
-                // 使用转换后的坐标查找棋子
-                const aiPiece = document.querySelector(`[data-position="${aiFromPos}"]`);
-                if (!aiPiece) {
-                    console.error(`找不到位于 ${aiFromPos} 的AI棋子`);
-                    // 检查所有棋子，帮助调试
-                    document.querySelectorAll('.piece').forEach(p => {
-                        console.log(`棋子位置: ${p.getAttribute('data-position')}, 类型: ${p.className}`);
-                    });
-                    return;
-                }
-                
-                console.log(`找到AI棋子: ${aiPiece.textContent}, 类型: ${aiPiece.className}`);
-                
-                const aiTargetPiece = document.querySelector(`[data-position="${aiToPos}"]`);
-                
-                if (aiTargetPiece) {
-                    aiTargetPiece.remove();
-                    // 更新棋盘状态
-                    delete boardState[aiToPos];
-                }
-                
-                if (aiPiece) {
-                    aiPiece.setAttribute('data-position', aiToPos);
-                    
-                    const aiCol = aiToPos.charCodeAt(0) - 97;
-                    const aiRow = 9 - parseInt(aiToPos.slice(1));
-                    
-                    aiPiece.style.left = `${BOARD_PADDING + aiCol * GRID_SIZE}px`;
-                    aiPiece.style.top = `${BOARD_PADDING + aiRow * GRID_SIZE}px`;
-                    
-                    // 更新棋盘状态
-                    boardState[aiToPos] = boardState[aiFromPos];
-                    delete boardState[aiFromPos];
-                    
-                    // 添加高亮效果
+        hideAIThinking(); // Hide thinking indicator
+        const undoButton = document.getElementById('undo-button');
+
+        if (response.ok) {
+            console.log("Server response:", data);
+            updateStatus(data.message || (data.move ? "AI 已走棋，轮到您了" : "请走棋"));
+
+            if (data.board) {
+                updateBoardFromServer(data.board);
+                if (data.move && typeof data.move === 'string') {
+                    const aiFromPos = data.move.substring(0, 2);
+                    const aiToPos = data.move.substring(2, 4);
                     highlightLastMove(aiFromPos, aiToPos);
-                    
-                    // 更新状态信息
-                    updateStatus(`AI已移动`);
                 }
-            }, 500);  // 500ms 延迟
+            }
+            // After a successful move, undo should be possible
+            if (undoButton) {
+                undoButton.disabled = false;
+            }
+
+        } else { // Network error or server error (like 500, 400)
+            console.error("Move request failed or AI returned error:", data);
+            const errorMessage = data.error || data.message || '走棋失败，请重试';
+            updateStatus(errorMessage);
+            // If move failed, it's unclear if undo state changes, better to check server or leave as is.
+            // For now, we don't change undo button state on move error.
         }
     } catch (error) {
-        // 隐藏AI思考状态，显示错误
-        hideAIThinking();
-        console.error('Error:', error);
-        updateStatus('与象棋引擎通信时出错，请确保服务正在运行');
+        hideAIThinking(); // Hide thinking indicator
+        console.error('Error during makeMove operation:', error);
+        updateStatus('与象棋引擎通信时出错，请确保服务正在运行。');
+        // On exception, we don't change undo button state.
     }
 }
 
@@ -760,7 +762,104 @@ function updateStatus(message) {
     status.textContent = message;
 }
 
-// 页面加载完成后初始化
-window.addEventListener('load', () => {
+function updateBoardFromServer(boardArray) {
+    const chessboard = document.querySelector('.chessboard');
+    if (!chessboard) return;
+
+    // Clear existing pieces from the board and from boardState
+    const existingPieces = chessboard.querySelectorAll('.piece');
+    existingPieces.forEach(p => p.remove());
+    boardState = {};
+    clearLastMoveHighlight();
+    deselectPiece();
+
+    boardArray.forEach((rowStr, rowIndex) => {
+        for (let colIndex = 0; colIndex < rowStr.length; colIndex++) {
+            const char = rowStr[colIndex];
+            if (char !== '.') { // If it's a piece
+                const pieceDetails = pieceMap[char];
+                if (pieceDetails) {
+                    const pieceElement = document.createElement('div');
+                    pieceElement.className = `piece ${pieceDetails.class}`;
+                    // Algebraic position: col 'a'-'i', row 0-9
+                    // boardArray has row 0 as black's back rank (visual top, algebraic row 9)
+                    // boardArray has row 9 as red's back rank (visual bottom, algebraic row 0)
+                    const algebraicRow = 9 - rowIndex;
+                    const algebraicCol = String.fromCharCode(97 + colIndex);
+                    const position = `${algebraicCol}${algebraicRow}`;
+                    
+                    pieceElement.setAttribute('data-position', position);
+                    pieceElement.textContent = pieceDetails.text;
+                    chessboard.appendChild(pieceElement);
+                    
+                    boardState[position] = {
+                        element: pieceElement,
+                        type: pieceDetails.class
+                    };
+                }
+            }
+        }
+    });
+
+    // After adding all pieces, update their visual positions
+    calculateBoardDimensions(); // Recalculate dimensions in case of resize
+    updateAllPiecesPositions(); // Position new pieces correctly
+    console.log("Board updated from server state.");
+}
+
+async function handleUndoClick() {
+    console.log("Undo button clicked");
+    showAIThinking("处理中..."); // Show processing message, will disable undo button
+    deselectPiece(); // Clear any selected piece
+    clearLastMoveHighlight();
+    const undoButton = document.getElementById('undo-button'); // Get button reference
+
+    try {
+        const response = await fetch('/undo', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            console.log("Undo successful:", data);
+            updateStatus(data.message || "悔棋成功，轮到您走棋。");
+            if (data.board) {
+                updateBoardFromServer(data.board);
+            }
+            // Update score if an element for it exists
+            // e.g., document.getElementById('score-display').textContent = data.score;
+            console.log("Player's score after undo:", data.score);
+
+            // Control undo button based on server's flag
+            if (undoButton) {
+                undoButton.disabled = !data.canUndoAgain;
+            }
+        } else {
+            console.error("Undo failed:", data.error);
+            updateStatus(data.error || "悔棋失败。");
+            // If undo fails (e.g., cannot undo further), disable the button
+            if (undoButton) {
+                undoButton.disabled = true;
+            }
+        }
+    } catch (error) {
+        console.error('Error during undo operation:', error);
+        updateStatus("悔棋操作时发生错误。");
+        // On exception, ideally, button state should reflect actual possibility of undo.
+        // For now, leave it as it was (disabled by showAIThinking).
+    } finally {
+        hideAIThinking(); // This will no longer re-enable the undo button by default
+        // The button state is now explicitly managed within the try/catch of handleUndoClick or after makeMove
+    }
+}
+
+// 初始化棋盘（在DOM加载完成后执行）
+document.addEventListener('DOMContentLoaded', () => {
     initializeBoard();
+    // Potentially, fetch initial board state from server here instead of relying on HTML
+    // Example: fetch('/get_initial_board').then(res => res.json()).then(data => updateBoardFromServer(data.board));
 }); 

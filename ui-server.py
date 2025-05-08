@@ -3,6 +3,25 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 import elephantfish
 
+# Helper function to convert the 256-char board to a list of 10 rows (9 chars each)
+def convert_board_to_frontend_format(board_string_256):
+    """
+    Converts the 256-character internal board string to a list of 10 strings,
+    each 9 characters long, representing the playable area of the Chinese Chess board.
+    Rows 0-4 are for Red (typically bottom), Rows 5-9 are for Black (typically top).
+    The input board_string_256 has Red pieces as uppercase and Black as lowercase if it's Red's turn.
+    The function will return the board from Red's perspective (Red at bottom).
+    """
+    playable_board_rows = []
+    # Standard Xiangqi board is 9 columns wide, 10 rows deep.
+    # The 256-char board is 16x16. Useful area is typically:
+    # Rows 3-12 (10 rows), Columns 3-11 (9 columns) in the 16x16 grid.
+    for i in range(3, 13): # 10 rows
+        row_start_index = i * 16 + 3 # Start of the 9-char wide playable area
+        row_end_index = row_start_index + 9
+        playable_board_rows.append(board_string_256[row_start_index:row_end_index])
+    return playable_board_rows
+
 class ChessRequestHandler(SimpleHTTPRequestHandler):
     def end_headers(self):
         self.send_header('Access-Control-Allow-Credentials', 'true')
@@ -37,16 +56,81 @@ class ChessRequestHandler(SimpleHTTPRequestHandler):
             try:
                 # 这里调用象棋引擎的代码处理移动并获取 AI 的响应
                 print(f"key log: To Process move: {move}")
-                ai_message, player_score = process_move(move)
+                # process_move now returns three values: ai_move_str, player_score, board_for_frontend
+                ai_message, player_score, board_for_frontend = process_move(move)
                 # print(f"key log: AI move: {ai_move}")
 
                 # 发送响应
                 self.send_response(200)
                 self.send_header('Content-type', 'application/json')
                 self.end_headers()
-                self.wfile.write(json.dumps({'move': ai_message, 'score': player_score}).encode('utf-8'))
+                # Include the board_for_frontend in the response
+                self.wfile.write(json.dumps({
+                    'move': ai_message, 
+                    'score': player_score, 
+                    'board': board_for_frontend 
+                }).encode('utf-8'))
             except Exception as e:
                 self.send_error(500, str(e))
+
+        elif self.path == '/undo':
+            print("key log: Received /undo request")
+            global hist
+
+            # We need at least the initial state + 1 player move + 1 AI move to undo back to player's turn.
+            # So, hist must have length > 2 (e.g., initial, P_move, AI_move).
+            # After poping twice, hist length will be 1 (initial state), player to move.
+            if len(hist) > 2: # Allow undo if there's at least one full turn (player + AI)
+                hist.pop()  # Remove AI's last move (board is from player's perspective)
+                hist.pop()  # Remove Player's last move (board was from AI's perspective)
+                
+                current_pos = hist[-1] # This is now the state where it's player's turn again
+                                      # Score is from player's perspective
+                
+                board_for_frontend = convert_board_to_frontend_format(current_pos.board)
+                # Determine if further undos are possible from the new state
+                can_undo_again = len(hist) > 2 
+
+                response_data = {
+                    'message': 'Undo successful. Your turn.',
+                    'board': board_for_frontend,
+                    'score': current_pos.score, # Score from player's perspective
+                    'turn': 'player', # Explicitly indicate it's player's turn
+                    'canUndoAgain': can_undo_again # Add this new flag
+                }
+                
+                self.send_response(200)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps(response_data).encode('utf-8'))
+                print(f"key log: Undo successful. New hist length: {len(hist)}. Board is from player's perspective.")
+                elephantfish.print_pos(current_pos) # Log the state after undo
+
+            else:
+                # Not enough moves to undo
+                error_message = "Cannot undo further."
+                if len(hist) <= 1: # Only initial state
+                    error_message = "Game at initial state, cannot undo."
+                elif len(hist) == 2: # Initial state + player's first move (AI hasn't moved yet)
+                     # Technically, player could undo their first move if desired.
+                     # Current logic requires AI to have moved.
+                     # To allow undoing player's first move before AI replies:
+                     # Change condition to `len(hist) > 1` and pop once.
+                     # For now, sticking to undoing a pair of moves.
+                    error_message = "Cannot undo until AI has also made a move."
+
+
+                self.send_response(400) # Bad Request
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': error_message}).encode('utf-8'))
+                print(f"key log: Cannot undo. Hist length: {len(hist)}.")
+            return # Important to return after handling /undo
+
+        # Fallback for unknown POST paths or if not returned earlier
+        # else:
+        #     self.send_error(404, "Endpoint not found")
+        # This else might interfere if there are other POST endpoints or if /move doesn't return
 
 def run_server(port=8000):
     server_address = ('', port)
@@ -75,13 +159,13 @@ def process_move(input_move):
     # Let's use MATE_UPPER for AI winning, MATE_LOWER for AI losing.
     # If hist[-1].score (AI's perspective) >= elephantfish.MATE_UPPER, AI has won. Player lost.
     if hist[-1].score >= elephantfish.MATE_UPPER: # Check if AI already has a winning position
-        return ("You lost (AI has winning line)", -elephantfish.MATE_UPPER)
+        return ("You lost (AI has winning line)", -elephantfish.MATE_UPPER, [])
 
 
     print(f"key log: input_move: {input_move}")
     match = re.match('([a-i][0-9])'*2, input_move)
     if not match:
-        return ("Please enter a move like h2e2", 0) # Neutral score for input error
+        return ("Please enter a move like h2e2", 0, []) # Neutral score for input error
     move = elephantfish.parse(match.group(1)), elephantfish.parse(match.group(2))
     
     # gen_moves generates moves for the current player (which is Red/Player here, as hist[-1] is before player's move is applied and rotated)
@@ -111,7 +195,7 @@ def process_move(input_move):
 
     player_pos = hist[-1] # Score is from Player's (Red's) perspective
     if move not in player_pos.gen_moves(): # gen_moves() on player_pos should generate Red's moves
-        return ("ErrInvalidMove", player_pos.score) # Return current player's score
+        return ("ErrInvalidMove", player_pos.score, []) # Return current player's score
 
     print(f"key log: input move is valid")
     hist.append(player_pos.move(move)) # This new hist[-1] is now from AI's (Black's) perspective
@@ -128,7 +212,10 @@ def process_move(input_move):
     # AI is checkmated if its score is extremely low (e.g., -MATE_UPPER or less).
     # The original MATE_LOWER from elephantfish.py (a positive value) seems incorrect for this check.
     if hist[-1].score <= -elephantfish.MATE_UPPER: # If AI's score is less than or equal to negative MATE_UPPER
-        return ("You won", elephantfish.MATE_UPPER) # Player's score is MATE_UPPER
+        # Player's score perspective would be MATE_UPPER
+        # The frontend receives the AI's move string, and the score *after* AI's move, from player's perspective.
+        # So if player won *before* AI moves, this is a terminal state.
+        return ("You won! (AI is checkmated)", elephantfish.MATE_UPPER, []) # Player's score is MATE_UPPER
 
     # Fire up the engine to look for a move. AI's turn now.
     # searcher.search is on hist[-1] (AI's perspective)
@@ -143,7 +230,7 @@ def process_move(input_move):
             break
     
     if ai_move_tuple is None: # Should not happen if game is not over
-        return ("AI Error: No move found", 0)
+        return ("AI Error: No move found", 0, [])
 
     # final_ai_score is from AI's perspective.
     # If AI checkmates player, final_ai_score will be MATE_UPPER.
@@ -165,14 +252,14 @@ def process_move(input_move):
     # After AI moves and board is rotated (inside .move()), hist[-1].score is Player's score.
     player_perspective_score_after_ai_move = hist[-1].score
     
-    # However, the 'final_ai_score' from search is more direct evaluation of AI's chosen move from AI's view.
-    # So, player's view of that state is -final_ai_score.
-    # Let's use the score of the position AFTER AI's move, which is hist[-1].score (Player's view)
-    
-    print_pos_for_player = hist[-1] # This is after AI's move, score is from player's (Red's) view.
+    # The board state to print for the player is hist[-1], which is already from Player's (Red's) perspective
+    print_pos_for_player = hist[-1] 
     elephantfish.print_pos(print_pos_for_player) # Print board for player to see
 
-    return ai_move_str, print_pos_for_player.score
+    # Convert board for frontend response
+    board_for_frontend = convert_board_to_frontend_format(print_pos_for_player.board)
+
+    return ai_move_str, player_perspective_score_after_ai_move, board_for_frontend
 
 if __name__ == '__main__':
     run_server()
