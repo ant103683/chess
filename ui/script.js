@@ -708,7 +708,7 @@ async function makeMove(fromPos, toPos) {
     // 发送移动到 elephantfish 引擎并等待 AI 的响应
     try {
         const move = `${fromPos}${toPos}`;  // 例如 "h2e2"
-        const response = await fetch('http://localhost:8000/move', {
+        const response = await fetch('/move', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
