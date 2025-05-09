@@ -105,28 +105,27 @@ def process_player_move(player_move_str):
     # elephantfish.print_pos(hist[-1]) # Log position after AI's move (Player's perspective)
 
     # Check if AI's move resulted in a win for AI (checkmate against player)
-    # hist[-1].score is from Player's (Red's) perspective. If very low, player is checkmated.
-    # final_player_score = hist[-1].score # Previous way
-    ai_response_message = "AI moved. Your turn."
-    game_turn_status = 'player' # Default
-    winner_status = None      # Default
+    current_player_score_after_ai_move = hist[-1].score # Score from Player's (Red's) perspective.
+    ai_response_message = "AI moved. Your turn." # Default message
+    game_turn_status = 'player' 
+    winner_status = None      
 
-    # Use the score from AI's search to determine if AI checkmated the player.
-    # final_ai_score_from_search is from AI's perspective.
-    if final_ai_score_from_search >= elephantfish.MATE_UPPER: # AI believes it has checkmated the player
+    # If player's score is very low, player is checkmated by AI's last move.
+    if current_player_score_after_ai_move <= -elephantfish.MATE_UPPER: 
         ai_response_message = "AI wins! You are checkmated."
-        game_turn_status = 'game_over' # CHANGED
-        winner_status = 'ai'         # ADDED
+        game_turn_status = 'game_over'
+        winner_status = 'ai'        
+    # For debugging, we can still log the AI's own evaluation of its move
+    print(f"Key log: AI's search score for its move: {final_ai_score_from_search}, Resulting player score: {current_player_score_after_ai_move}")
 
     board_for_frontend = convert_board_to_frontend_format(hist[-1].board)
-    displayed_player_score = hist[-1].score # This is the actual score of the board from player's perspective for display
     
     response_data = {
         'message': ai_response_message,
         'move': ai_move_str, 
-        'score': displayed_player_score, # Use the actual board score for display
+        'score': current_player_score_after_ai_move, # Display player's actual score
         'board': board_for_frontend,
-        'turn': game_turn_status, # Use the updated status
+        'turn': game_turn_status, 
         'canUndoAgain': len(hist) > 2
     }
     if winner_status:

@@ -6,6 +6,7 @@ let legalMoveMarkers = []; // 存储合法移动标记的数组
 
 // 棋盘状态
 let boardState = {};
+let isGameOver = false; // 新增：游戏结束状态标志
 
 // Piece mapping from server characters to frontend classes and text
 const pieceMap = {
@@ -121,6 +122,12 @@ function initializeBoard() {
         undoButton.addEventListener('click', handleUndoClick);
         undoButton.disabled = true; // Disable undo button on initial load
     }
+
+    // Add New Game button listener
+    const newGameButton = document.getElementById('new-game-button');
+    if (newGameButton) {
+        newGameButton.addEventListener('click', handleNewGameClick);
+    }
 }
 
 function handleGlobalClick(event) {
@@ -143,6 +150,11 @@ function handleGlobalClick(event) {
 }
 
 function handlePieceClick(event) {
+    if (isGameOver) {
+        console.log("Game is over. Cannot select piece.");
+        deselectPiece(); // 确保没有棋子保持选中状态
+        return;
+    }
     console.log("handlePieceClick processing");
     const piece = event.target;
     const piecePosition = piece.getAttribute('data-position');
@@ -177,6 +189,10 @@ function handlePieceClick(event) {
 }
 
 function handleBoardClick(event) {
+    if (isGameOver) {
+        console.log("Game is over. Cannot move to board position.");
+        return;
+    }
     console.log("handleBoardClick processing");
     if (!selectedPiece) return;
 
@@ -245,6 +261,24 @@ function clearLegalMoveMarkers() {
         }
     });
     legalMoveMarkers = [];
+}
+
+// 新增辅助函数：根据代数坐标定位棋子元素的视觉位置
+function positionPieceElement(pieceElement, algebraicPos) {
+    const colChar = algebraicPos.charAt(0);
+    const rowChar = algebraicPos.substring(1);
+    const x = colChar.charCodeAt(0) - 'a'.charCodeAt(0); // 0 for 'a', 1 for 'b', ...
+    const y = parseInt(rowChar); // 0-9
+
+    // BOARD_PADDING 和 GRID_SIZE 必须是最新的
+    // calculateBoardDimensions(); // 可以在此调用以确保，但可能会影响性能，假设它们是相对稳定的
+
+    pieceElement.style.left = `${BOARD_PADDING + x * GRID_SIZE}px`;
+    // Y坐标转换：棋盘数组的0行是视觉上的第9行（黑方底线），代数坐标的0行是视觉上的第0行（红方底线）
+    // 前端视觉渲染时，通常 (0,0) 在左上角。我们的代数坐标系中，红方在行0-4，黑方在行5-9。
+    // updateAllPiecesPositions 和 showLegalMoves 使用 (9-y) 的逻辑，这里保持一致。
+    pieceElement.style.top = `${BOARD_PADDING + (9 - y) * GRID_SIZE}px`;
+    pieceElement.setAttribute('data-position', algebraicPos); // 更新棋子的data-position属性
 }
 
 // 显示棋子的合法移动位置
@@ -663,7 +697,7 @@ window.addEventListener('resize', function() {
         calculateBoardDimensions();
         updateAllPiecesPositions();
         // 同样更新所有的合法移动标记
-        if (selectedPiece) {
+        if (selectedPiece && !isGameOver) { // 游戏结束时不应再显示合法走法
             clearLegalMoveMarkers();
             showLegalMoves(selectedPiece);
         }
@@ -671,89 +705,90 @@ window.addEventListener('resize', function() {
 });
 
 async function makeMove(fromPos, toPos) {
-    console.log(`Attempting to move from ${fromPos} to ${toPos}`);
-    showAIThinking("AI正在计算..."); // AI is thinking, disable undo
+    // 1. 乐观前端更新 (Optimistic Frontend Update)
+    const movingPieceElement = boardState[fromPos]?.element;
 
-    // 清除上一步AI移动的高亮效果
-    clearLastMoveHighlight();
-    
-    // 移动玩家的棋子
-    const movingPiece = document.querySelector(`[data-position="${fromPos}"]`);
-    const targetPiece = document.querySelector(`[data-position="${toPos}"]`);
-    
-    if (targetPiece) {
-        targetPiece.remove();
-        // 更新棋盘状态
-        delete boardState[toPos];
-    }
-    
-    movingPiece.setAttribute('data-position', toPos);
-    
-    const col = toPos.charCodeAt(0) - 97;
-    const row = 9 - parseInt(toPos.slice(1));
-    
-    movingPiece.style.left = `${BOARD_PADDING + col * GRID_SIZE}px`;
-    movingPiece.style.top = `${BOARD_PADDING + row * GRID_SIZE}px`;
-    
-    // 更新棋盘状态
-    boardState[toPos] = boardState[fromPos];
-    delete boardState[fromPos];
-    
-    if (selectedPiece) {
-        selectedPiece.classList.remove('selected');
-        selectedPiece = null;
-        clearLegalMoveMarkers();
+    if (!movingPieceElement) {
+        console.error("Optimistic update error: Piece not found at", fromPos, "in local boardState.");
+        updateStatus("内部错误：找不到要移动的棋子。");
+        return; // 如果找不到棋子，则不继续
     }
 
-    // 发送移动到 elephantfish 引擎并等待 AI 的响应
+    // 处理吃子（视觉上和本地状态）
+    const capturedPieceData = boardState[toPos]; // 检查目标位置是否有棋子数据
+    if (capturedPieceData && capturedPieceData.element) {
+        capturedPieceData.element.remove(); // 从DOM移除被吃棋子
+        // boardState[toPos] 将在下面被覆盖或删除
+    }
+
+    // 更新移动棋子的视觉位置和 data-position 属性
+    positionPieceElement(movingPieceElement, toPos);
+
+    // 更新本地 boardState
+    const pieceDataToMove = boardState[fromPos]; // 获取要移动的棋子数据
+    delete boardState[fromPos];              // 从旧位置删除
+    boardState[toPos] = pieceDataToMove;     // 添加到新位置
+    // pieceDataToMove.element 已经是 movingPieceElement，所以不需要重新赋值
+
+    // 玩家的棋子移动后，清除之前的AI高亮，并取消选中
+    clearLastMoveHighlight(); 
+    // 可以选择高亮玩家的当前走法，但这会被 updateBoardFromServer 很快清除
+    // highlightLastMove(fromPos, toPos); // 暂时不高亮玩家的乐观移动，避免闪烁
+    deselectPiece(); // 玩家的棋子已"落定"在前端
+
+    // 2. 显示AI思考提示，并向服务器发送移动请求
+    showAIThinking();
+
     try {
-        const move = `${fromPos}${toPos}`;  // 例如 "h2e2"
         const response = await fetch('/move', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ move: move })
+            body: JSON.stringify({ move: `${fromPos}${toPos}` }),
         });
+        const data = await response.json();
+        // hideAIThinking(); // 移至finally块
 
-        if (!response.ok) {
-            throw new Error('Network response was not ok');
-        }
-
-        const data = await response.json();  // 解析 JSON 响应
-        
-        hideAIThinking(); // Hide thinking indicator
-        const undoButton = document.getElementById('undo-button');
+        console.log("Server response:", data);
 
         if (response.ok) {
-            console.log("Server response:", data);
-            updateStatus(data.message || (data.move ? "AI 已走棋，轮到您了" : "请走棋"));
+            // 服务器响应是权威状态，使用它更新整个棋盘
+            // 这会正确显示AI的走法，并纠正任何与乐观更新不一致的地方
+            updateBoardFromServer(data.board);
+            updateStatus(data.message);
+            
+            isGameOver = (data.turn === 'game_over');
+            document.getElementById('undo-button').disabled = !data.canUndoAgain;
 
+            if (data.move) { // AI 的实际走法
+                highlightLastMove(data.move.substring(0, 2), data.move.substring(2, 4));
+            }
+            // deselectPiece() 已在乐观更新后调用
+        } else {
+            updateStatus(data.error || "无效的移动或服务器错误");
+            // 如果服务器拒绝了移动（例如，由于更复杂的规则如"被将军"），
+            // 并且返回了棋盘状态，则使用该状态回滚前端的乐观更新。
             if (data.board) {
-                updateBoardFromServer(data.board);
-                if (data.move && typeof data.move === 'string') {
-                    const aiFromPos = data.move.substring(0, 2);
-                    const aiToPos = data.move.substring(2, 4);
-                    highlightLastMove(aiFromPos, aiToPos);
-                }
+                updateBoardFromServer(data.board); 
+                // 此时，可能需要重新让玩家选择，或者提示为什么移动失败
+                // updateStatus 已经显示了错误消息。
+            } else {
+                // 如果服务器出错且未返回棋盘状态，前端的乐观更新可能与实际状态不符
+                // 这是一个复杂情况，理想情况下应强制同步或提示用户
+                console.error("Move rejected by server, and no board data provided to revert UI. Client state might be inconsistent.");
+                // 也可以考虑尝试重新获取棋盘状态
+                // await fetchInitialBoardState(); // (假设有这样一个函数)
             }
-            // After a successful move, undo should be possible
-            if (undoButton) {
-                undoButton.disabled = false;
-            }
-
-        } else { // Network error or server error (like 500, 400)
-            console.error("Move request failed or AI returned error:", data);
-            const errorMessage = data.error || data.message || '走棋失败，请重试';
-            updateStatus(errorMessage);
-            // If move failed, it's unclear if undo state changes, better to check server or leave as is.
-            // For now, we don't change undo button state on move error.
         }
     } catch (error) {
-        hideAIThinking(); // Hide thinking indicator
-        console.error('Error during makeMove operation:', error);
-        updateStatus('与象棋引擎通信时出错，请确保服务正在运行。');
-        // On exception, we don't change undo button state.
+        // hideAIThinking(); // 移至finally块
+        updateStatus("与服务器通信错误");
+        console.error("Network error:", error);
+        // 网络错误后，前端的乐观更新仍然存在。理想情况下应有回滚机制。
+        // alert("网络连接错误，您的操作可能未生效，请尝试刷新或检查网络。");
+    } finally {
+        hideAIThinking();
     }
 }
 
@@ -809,51 +844,69 @@ function updateBoardFromServer(boardArray) {
 
 async function handleUndoClick() {
     console.log("Undo button clicked");
-    showAIThinking("处理中..."); // Show processing message, will disable undo button
-    deselectPiece(); // Clear any selected piece
-    clearLastMoveHighlight();
-    const undoButton = document.getElementById('undo-button'); // Get button reference
-
+    showAIThinking("正在悔棋..."); // Show thinking/loading message
     try {
         const response = await fetch('/undo', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-            },
+            }
         });
-
         const data = await response.json();
+        hideAIThinking();
 
         if (response.ok) {
-            console.log("Undo successful:", data);
+            isGameOver = false; // After undo, game is no longer over
             updateStatus(data.message || "悔棋成功，轮到您走棋。");
-            if (data.board) {
-                updateBoardFromServer(data.board);
-            }
-            // Update score if an element for it exists
-            // e.g., document.getElementById('score-display').textContent = data.score;
-            console.log("Player's score after undo:", data.score);
-
-            // Control undo button based on server's flag
-            if (undoButton) {
-                undoButton.disabled = !data.canUndoAgain;
-            }
+            updateBoardFromServer(data.board);
+            deselectPiece(); // Clear selection
+            clearLastMoveHighlight(); // Clear any previous move highlight
+            document.getElementById('undo-button').disabled = !data.canUndoAgain;
+            console.log("Undo successful:", data);
         } else {
-            console.error("Undo failed:", data.error);
             updateStatus(data.error || "悔棋失败。");
-            // If undo fails (e.g., cannot undo further), disable the button
-            if (undoButton) {
-                undoButton.disabled = true;
-            }
+            document.getElementById('undo-button').disabled = false; // Re-enable if it failed but was clickable
+            console.error("Error undoing move:", data.error);
         }
     } catch (error) {
-        console.error('Error during undo operation:', error);
-        updateStatus("悔棋操作时发生错误。");
-        // On exception, ideally, button state should reflect actual possibility of undo.
-        // For now, leave it as it was (disabled by showAIThinking).
-    } finally {
-        hideAIThinking(); // This will no longer re-enable the undo button by default
-        // The button state is now explicitly managed within the try/catch of handleUndoClick or after makeMove
+        hideAIThinking();
+        updateStatus("与服务器通信错误，无法悔棋。");
+        document.getElementById('undo-button').disabled = false; // Re-enable on network error
+        console.error("Network error during undo:", error);
+    }
+}
+
+// 新增: 处理新游戏按钮点击的函数
+async function handleNewGameClick() {
+    console.log("New Game button clicked");
+    showAIThinking("正在重新开始游戏...");
+    try {
+        const response = await fetch('/new_game', {
+            method: 'POST', // Or 'GET' if your backend is set up for that
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        const data = await response.json();
+        hideAIThinking();
+
+        if (response.ok) {
+            isGameOver = false; 
+            updateStatus(data.message || "新游戏已开始，轮到您走棋。");
+            updateBoardFromServer(data.board);
+            deselectPiece(); 
+            clearLastMoveHighlight();
+            // Undo button should be disabled at the start of a new game
+            document.getElementById('undo-button').disabled = true; 
+            console.log("New game started successfully:", data);
+        } else {
+            updateStatus(data.error || "开始新游戏失败。");
+            console.error("Error starting new game:", data.error);
+        }
+    } catch (error) {
+        hideAIThinking();
+        updateStatus("与服务器通信错误，无法开始新游戏。");
+        console.error("Network error starting new game:", error);
     }
 }
 
