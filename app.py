@@ -89,8 +89,15 @@ def process_player_move(player_move_str):
         # Or if search fails for some reason.
         return jsonify({'error': "AI Error: No move found", 'board': convert_board_to_frontend_format(ai_pos.rotate().board), 'score': -ai_pos.score, 'canUndoAgain': len(hist) > 2}), 500
 
-    ai_move_str = elephantfish.render(ai_move_tuple[0]) + elephantfish.render(ai_move_tuple[1])
-    print(f"Key log: AI move: {ai_move_str}")
+    # ai_move_tuple contains (from_sq_AI_pov, to_sq_AI_pov) which are indices on the AI's rotated board.
+    # We need to convert these to absolute board indices (Red's POV, standard board) before rendering.
+    # The rotation effect is: rotated_board[k] corresponds to original_board[254-k].
+    from_sq_absolute = 254 - ai_move_tuple[0]
+    to_sq_absolute = 254 - ai_move_tuple[1]
+
+    ai_move_str = elephantfish.render(from_sq_absolute) + elephantfish.render(to_sq_absolute)
+    # Original line: ai_move_str = elephantfish.render(ai_move_tuple[0]) + elephantfish.render(ai_move_tuple[1])
+    print(f"Key log: AI move (rotated POV): {elephantfish.render(ai_move_tuple[0]) + elephantfish.render(ai_move_tuple[1])}, AI move (absolute POV): {ai_move_str}")
     
     hist.append(ai_pos.move(ai_move_tuple)) # Apply AI's move. New hist[-1] is Player's (Red's) turn.
     # elephantfish.print_pos(hist[-1]) # Log position after AI's move (Player's perspective)
