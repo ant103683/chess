@@ -67,7 +67,8 @@ def process_player_move(player_move_str):
             'move': None, # AI makes no move
             'score': elephantfish.MATE_UPPER, # Player's score
             'board': current_board_state,
-            'turn': 'player',
+            'turn': 'game_over',
+            'winner': 'player',
             'canUndoAgain': len(hist) > 2
         }), 200
 
@@ -75,19 +76,20 @@ def process_player_move(player_move_str):
     ai_pos = hist[-1] # AI (Black) to move
     start_time = time.time()
     ai_move_tuple = None
-    # final_ai_score_from_search = 0 # From AI's perspective
+    final_ai_score_from_search = 0 # From AI's perspective, initialize to a non-mate score
 
     for _depth, current_ai_move_tuple, current_ai_score in searcher.search(ai_pos, hist):
         ai_move_tuple = current_ai_move_tuple
-        # final_ai_score_from_search = current_ai_score
+        final_ai_score_from_search = current_ai_score # Capture the score from search
         if time.time() - start_time > elephantfish.THINK_TIME:
             print(f"AI think time limit reached at depth {_depth}")
             break
     
     if ai_move_tuple is None:
-        # This could happen if AI is checkmated or stalemated, but previous check should catch checkmate.
-        # Or if search fails for some reason.
-        return jsonify({'error': "AI Error: No move found", 'board': convert_board_to_frontend_format(ai_pos.rotate().board), 'score': -ai_pos.score, 'canUndoAgain': len(hist) > 2}), 500
+        # This case means AI has no moves. Could be checkmated by player or stalemated.
+        # We'll rely on the player win condition check after player's move for checkmate detection by player.
+        # For now, if search returns no move, treat as an error or potential stalemate (not fully handled here yet).
+        return jsonify({'error': "AI Error: No move found or AI is stalemated/checkmated (player might have won)", 'board': convert_board_to_frontend_format(ai_pos.rotate().board), 'score': -ai_pos.score, 'canUndoAgain': len(hist) > 2}), 500
 
     # ai_move_tuple contains (from_sq_AI_pov, to_sq_AI_pov) which are indices on the AI's rotated board.
     # We need to convert these to absolute board indices (Red's POV, standard board) before rendering.
@@ -104,21 +106,33 @@ def process_player_move(player_move_str):
 
     # Check if AI's move resulted in a win for AI (checkmate against player)
     # hist[-1].score is from Player's (Red's) perspective. If very low, player is checkmated.
-    final_player_score = hist[-1].score
+    # final_player_score = hist[-1].score # Previous way
     ai_response_message = "AI moved. Your turn."
-    if final_player_score <= -elephantfish.MATE_UPPER: # Player is checkmated
+    game_turn_status = 'player' # Default
+    winner_status = None      # Default
+
+    # Use the score from AI's search to determine if AI checkmated the player.
+    # final_ai_score_from_search is from AI's perspective.
+    if final_ai_score_from_search >= elephantfish.MATE_UPPER: # AI believes it has checkmated the player
         ai_response_message = "AI wins! You are checkmated."
+        game_turn_status = 'game_over' # CHANGED
+        winner_status = 'ai'         # ADDED
 
     board_for_frontend = convert_board_to_frontend_format(hist[-1].board)
+    displayed_player_score = hist[-1].score # This is the actual score of the board from player's perspective for display
     
-    return jsonify({
+    response_data = {
         'message': ai_response_message,
         'move': ai_move_str, 
-        'score': final_player_score, 
+        'score': displayed_player_score, # Use the actual board score for display
         'board': board_for_frontend,
-        'turn': 'player',
+        'turn': game_turn_status, # Use the updated status
         'canUndoAgain': len(hist) > 2
-    }), 200
+    }
+    if winner_status:
+        response_data['winner'] = winner_status
+    
+    return jsonify(response_data), 200
 
 @app.route('/') # Route for the main game page
 def game_page():
